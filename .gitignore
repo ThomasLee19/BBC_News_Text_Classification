@@ -50,3 +50,6 @@ main.py
 models.py
 train.py
 models/
+analyze_text_length.py
+Optuna details.md
+BBC_News_CNN_Optuna.py

@@ -16,7 +16,7 @@ import numpy as np
 # =========================
 PARAMS = {
     "max_vocab_size": 10000,   # 最大词汇表
-    "max_len": 100,            # 最大序列长度
+    "max_len": 400,            # 最大序列长度
     "embed_dim": 100,          # 词向量维度
     "kernel_sizes": [3, 4, 5], # CNN卷积核尺寸
     "num_filters": 100,        # 每种卷积核数量

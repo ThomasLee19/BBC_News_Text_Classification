@@ -16,7 +16,7 @@ import numpy as np
 # =========================
 PARAMS = {
     "max_vocab_size": 10000,   # 最大词汇表
-    "max_len": 100,            # 最大序列长度
+    "max_len": 400,            # 最大序列长度
     "embed_dim": 128,          # 词向量维度
     "hidden_dim": 256,         # LSTM隐藏层维度
     "num_layers": 2,           # LSTM层数
