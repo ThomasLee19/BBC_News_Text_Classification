@@ -53,3 +53,4 @@ models/
 analyze_text_length.py
 Optuna details.md
 BBC_News_CNN_Optuna.py
+BBC_News_BERT.py
