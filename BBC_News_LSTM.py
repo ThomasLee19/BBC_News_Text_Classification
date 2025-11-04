@@ -18,7 +18,7 @@ PARAMS = {
     "max_vocab_size": 10000,   # 最大词汇表
     "max_len": 100,            # 最大序列长度
     "embed_dim": 128,          # 词向量维度
-    "hidden_dim": 128,         # LSTM隐藏层维度
+    "hidden_dim": 256,         # LSTM隐藏层维度
     "num_layers": 2,           # LSTM层数
     "bidirectional": True,     # 是否使用双向LSTM
     "dropout": 0.5,            # dropout概率

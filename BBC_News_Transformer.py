@@ -17,7 +17,7 @@ import numpy as np
 # =========================
 PARAMS = {
     "max_vocab_size": 15000,
-    "max_len": 128,
+    "max_len": 512,
     "embed_dim": 256,            # Transformer 的 d_model
     "nhead": 8,
     "dim_feedforward": 512,
