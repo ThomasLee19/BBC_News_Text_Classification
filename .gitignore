@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Model files (模型文件通常很大，不要提交到git)
+*.pth
+*.h5
+*.pkl
+*.model
+*.weights
+
+# Logs and Checkpoints
+*.log
+logs/
+checkpoints/
+
+# Figures (可选：如果图片文件很大可以排除)
+figures/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 不需要版本控制的项目文件
+evaluate.py
+main.py
+models.py
+train.py
+models/
