@@ -20,7 +20,7 @@ env/
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Model files (模型文件通常很大，不要提交到git)
+# Model files
 *.pth
 *.h5
 *.pkl
@@ -32,7 +32,7 @@ env/
 logs/
 checkpoints/
 
-# Figures (可选：如果图片文件很大可以排除)
+# Figures
 figures/
 
 # Temporary files
