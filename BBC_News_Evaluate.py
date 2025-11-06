@@ -9,7 +9,6 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
-from sklearn.feature_extraction.text import TfidfVectorizer
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 import pandas as pd
@@ -56,23 +55,40 @@ class TextDataset(Dataset):
 # 模型定义（需要与训练时一致）
 # =========================
 class MLPClassifier(nn.Module):
-    def __init__(self, input_dim, hidden1, hidden2, num_classes, dropout1, dropout2):
+    def __init__(self, vocab_size, embed_dim, hidden1, hidden2, num_classes, dropout1, dropout2, pad_idx=0):
         super().__init__()
-        self.fc1 = nn.Linear(input_dim, hidden1)
+        # Embedding层：将词索引映射为稠密向量
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_idx)
+
+        # MLP层
+        self.fc1 = nn.Linear(embed_dim, hidden1)
         self.relu1 = nn.ReLU()
         self.dropout1 = nn.Dropout(dropout1)
+
         self.fc2 = nn.Linear(hidden1, hidden2)
         self.relu2 = nn.ReLU()
         self.dropout2 = nn.Dropout(dropout2)
+
         self.fc3 = nn.Linear(hidden2, num_classes)
 
     def forward(self, x):
+        # x: (batch, seq_len)
+        # Embedding
+        x = self.embedding(x)  # (batch, seq_len, embed_dim)
+
+        # 平均池化：忽略padding位置
+        mask = (x.sum(dim=2) != 0).float().unsqueeze(2)  # (batch, seq_len, 1)
+        x = (x * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1.0)  # (batch, embed_dim)
+
+        # MLP层
         x = self.fc1(x)
         x = self.relu1(x)
         x = self.dropout1(x)
+
         x = self.fc2(x)
         x = self.relu2(x)
         x = self.dropout2(x)
+
         logits = self.fc3(x)
         return logits
 
@@ -261,99 +277,82 @@ def load_and_evaluate_model(model_name):
 
     device = torch.device(PARAMS["device"])
 
-    # 根据模型类型处理
+    # 所有模型（包括MLP）都使用Tokenizer + Embedding
+    tokenizer = Tokenizer(num_words=params["max_vocab_size"], oov_token="<OOV>")
+    tokenizer.word_index = ckpt["tokenizer_word_index"]
+
+    X_test_seq = pad_sequences(tokenizer.texts_to_sequences(X_test_text),
+                               maxlen=params["max_len"], padding='post', truncating='post')
+
+    X_test_tensor = torch.tensor(X_test_seq, dtype=torch.long)
+    y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+
+    test_loader = DataLoader(TextDataset(X_test_tensor, y_test_tensor),
+                            batch_size=32, shuffle=False)
+
+    vocab_size = min(len(tokenizer.word_index) + 1, params["max_vocab_size"])
+
+    # 根据不同模型创建
     if model_name == "mlp":
-        # MLP使用TF-IDF
-        # 需要在训练集上重新fit，然后用相同的vocabulary转换测试集
-        train_df = pd.read_csv(PARAMS["test_data_path"].replace("test.csv", "train.csv"))
-        X_train_text = train_df.iloc[:, 4].astype(str)
-
-        vectorizer = TfidfVectorizer(max_features=params["max_features"])
-        vectorizer.fit(X_train_text)  # 在训练集上fit
-        X_test = vectorizer.transform(X_test_text).toarray()  # 转换测试集
-
-        X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-        y_test_tensor = torch.tensor(y_test, dtype=torch.long)
-
-        test_loader = DataLoader(TextDataset(X_test_tensor, y_test_tensor),
-                                batch_size=64, shuffle=False)
-
         model = MLPClassifier(
-            input_dim=X_test.shape[1],
+            vocab_size=vocab_size,
+            embed_dim=params["embed_dim"],
             hidden1=params["hidden1"],
             hidden2=params["hidden2"],
             num_classes=len(le.classes_),
             dropout1=params["dropout1"],
             dropout2=params["dropout2"]
         ).to(device)
-
-    else:
-        # 序列模型使用Tokenizer
-        tokenizer = Tokenizer(num_words=params["max_vocab_size"], oov_token="<OOV>")
-        tokenizer.word_index = ckpt["tokenizer_word_index"]
-
-        X_test_seq = pad_sequences(tokenizer.texts_to_sequences(X_test_text),
-                                   maxlen=params["max_len"], padding='post', truncating='post')
-
-        X_test_tensor = torch.tensor(X_test_seq, dtype=torch.long)
-        y_test_tensor = torch.tensor(y_test, dtype=torch.long)
-
-        test_loader = DataLoader(TextDataset(X_test_tensor, y_test_tensor),
-                                batch_size=32, shuffle=False)
-
-        vocab_size = min(len(tokenizer.word_index) + 1, params["max_vocab_size"])
-
-        # 根据不同模型创建
-        if model_name == "rnn":
-            model = RNNClassifier(
-                vocab_size=vocab_size,
-                embed_dim=params["embed_dim"],
-                hidden_dim=params["hidden_dim"],
-                num_classes=len(le.classes_),
-                num_layers=params["num_layers"],
-                dropout=params["dropout"],
-                bidirectional=params["bidirectional"]
-            ).to(device)
-        elif model_name == "lstm":
-            model = LSTMClassifier(
-                vocab_size=vocab_size,
-                embed_dim=params["embed_dim"],
-                hidden_dim=params["hidden_dim"],
-                num_classes=len(le.classes_),
-                num_layers=params["num_layers"],
-                dropout=params["dropout"],
-                bidirectional=params["bidirectional"]
-            ).to(device)
-        elif model_name == "gru":
-            model = GRUClassifier(
-                vocab_size=vocab_size,
-                embed_dim=params["embed_dim"],
-                hidden_dim=params["hidden_dim"],
-                num_classes=len(le.classes_),
-                num_layers=params["num_layers"],
-                dropout=params["dropout"],
-                bidirectional=params["bidirectional"]
-            ).to(device)
-        elif model_name == "cnn":
-            model = CNNClassifier(
-                vocab_size=vocab_size,
-                embed_dim=params["embed_dim"],
-                num_classes=len(le.classes_),
-                kernel_sizes=params["kernel_sizes"],
-                num_filters=params["num_filters"],
-                dropout=params["dropout"]
-            ).to(device)
-        elif model_name == "transformer":
-            model = TransformerClassifier(
-                vocab_size=vocab_size,
-                embed_dim=params["embed_dim"],
-                num_classes=len(le.classes_),
-                nhead=params["nhead"],
-                num_layers=params["num_encoder_layers"],
-                dim_feedforward=params["dim_feedforward"],
-                dropout=params["dropout"],
-                max_len=params["max_len"]
-            ).to(device)
+    elif model_name == "rnn":
+        model = RNNClassifier(
+            vocab_size=vocab_size,
+            embed_dim=params["embed_dim"],
+            hidden_dim=params["hidden_dim"],
+            num_classes=len(le.classes_),
+            num_layers=params["num_layers"],
+            dropout=params["dropout"],
+            bidirectional=params["bidirectional"]
+        ).to(device)
+    elif model_name == "lstm":
+        model = LSTMClassifier(
+            vocab_size=vocab_size,
+            embed_dim=params["embed_dim"],
+            hidden_dim=params["hidden_dim"],
+            num_classes=len(le.classes_),
+            num_layers=params["num_layers"],
+            dropout=params["dropout"],
+            bidirectional=params["bidirectional"]
+        ).to(device)
+    elif model_name == "gru":
+        model = GRUClassifier(
+            vocab_size=vocab_size,
+            embed_dim=params["embed_dim"],
+            hidden_dim=params["hidden_dim"],
+            num_classes=len(le.classes_),
+            num_layers=params["num_layers"],
+            dropout=params["dropout"],
+            bidirectional=params["bidirectional"]
+        ).to(device)
+    elif model_name == "cnn":
+        model = CNNClassifier(
+            vocab_size=vocab_size,
+            embed_dim=params["embed_dim"],
+            num_classes=len(le.classes_),
+            kernel_sizes=params["kernel_sizes"],
+            num_filters=params["num_filters"],
+            dropout=params["dropout"]
+        ).to(device)
+    elif model_name == "transformer":
+        model = TransformerClassifier(
+            vocab_size=vocab_size,
+            embed_dim=params["embed_dim"],
+            num_classes=len(le.classes_),
+            nhead=params["nhead"],
+            num_layers=params["num_encoder_layers"],
+            dim_feedforward=params["dim_feedforward"],
+            dropout=params["dropout"],
+            max_len=params["max_len"]
+        ).to(device)
 
     # 加载权重
     model.load_state_dict(ckpt["model_state"])

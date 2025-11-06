@@ -4,9 +4,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, accuracy_score
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 import pandas as pd
 import numpy as np
 
@@ -14,12 +15,14 @@ import numpy as np
 # 超参数配置
 # =========================
 PARAMS = {
-    "max_features": 5000,      # TF-IDF最大特征数
+    "max_vocab_size": 10000,   # 最大词汇表
+    "max_len": 400,            # 最大序列长度
+    "embed_dim": 100,          # 词向量维度
     "hidden1": 512,            # 第一隐藏层维度
     "hidden2": 128,            # 第二隐藏层维度
     "dropout1": 0.4,           # 第一层dropout概率
     "dropout2": 0.3,           # 第二层dropout概率
-    "batch_size": 64,          # 批次大小
+    "batch_size": 32,          # 批次大小
     "learning_rate": 1e-3,     # 学习率
     "num_epochs": 100,         # 训练轮次
     "device": "cuda" if torch.cuda.is_available() else "cpu",
@@ -56,22 +59,24 @@ num_classes = len(le.classes_)
 print("类别数:", num_classes, "Classes:", list(le.classes_))
 
 # =========================
-# 3. 文本向量化（TF-IDF）
+# 3. Tokenizer -> 序列化
 # =========================
-vectorizer = TfidfVectorizer(max_features=PARAMS["max_features"])
-X_train = vectorizer.fit_transform(X_train_text).toarray()
-X_val   = vectorizer.transform(X_val_text).toarray()
-X_test  = vectorizer.transform(X_test_text).toarray()
+tokenizer = Tokenizer(num_words=PARAMS["max_vocab_size"], oov_token="<OOV>")
+tokenizer.fit_on_texts(X_train_text.tolist())
 
-input_dim = X_train.shape[1]
-print("TF-IDF特征维度:", input_dim)
+X_train_seq = pad_sequences(tokenizer.texts_to_sequences(X_train_text), maxlen=PARAMS["max_len"], padding='post', truncating='post')
+X_val_seq   = pad_sequences(tokenizer.texts_to_sequences(X_val_text),   maxlen=PARAMS["max_len"], padding='post', truncating='post')
+X_test_seq  = pad_sequences(tokenizer.texts_to_sequences(X_test_text),  maxlen=PARAMS["max_len"], padding='post', truncating='post')
+
+vocab_size = min(len(tokenizer.word_index) + 1, PARAMS["max_vocab_size"])
+print("词表大小:", vocab_size)
 
 # 转为 tensor
-X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+X_train_tensor = torch.tensor(X_train_seq, dtype=torch.long)
 y_train_tensor = torch.tensor(y_train, dtype=torch.long)
-X_val_tensor   = torch.tensor(X_val, dtype=torch.float32)
+X_val_tensor   = torch.tensor(X_val_seq, dtype=torch.long)
 y_val_tensor   = torch.tensor(y_val, dtype=torch.long)
-X_test_tensor  = torch.tensor(X_test, dtype=torch.float32)
+X_test_tensor  = torch.tensor(X_test_seq, dtype=torch.long)
 y_test_tensor  = torch.tensor(y_test, dtype=torch.long)
 
 # Dataset & DataLoader
@@ -89,12 +94,16 @@ val_loader   = DataLoader(TextDataset(X_val_tensor, y_val_tensor), batch_size=PA
 test_loader  = DataLoader(TextDataset(X_test_tensor, y_test_tensor), batch_size=PARAMS["batch_size"], shuffle=False)
 
 # =========================
-# 4. MLP 分类模型
+# 4. MLP 分类模型（使用Embedding + 平均池化）
 # =========================
 class MLPClassifier(nn.Module):
-    def __init__(self, input_dim, hidden1, hidden2, num_classes, dropout1, dropout2):
+    def __init__(self, vocab_size, embed_dim, hidden1, hidden2, num_classes, dropout1, dropout2, pad_idx=0):
         super().__init__()
-        self.fc1 = nn.Linear(input_dim, hidden1)
+        # Embedding层：将词索引映射为稠密向量
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_idx)
+
+        # MLP层
+        self.fc1 = nn.Linear(embed_dim, hidden1)
         self.relu1 = nn.ReLU()
         self.dropout1 = nn.Dropout(dropout1)
 
@@ -105,7 +114,15 @@ class MLPClassifier(nn.Module):
         self.fc3 = nn.Linear(hidden2, num_classes)
 
     def forward(self, x):
-        # x: (batch, input_dim)
+        # x: (batch, seq_len)
+        # Embedding
+        x = self.embedding(x)  # (batch, seq_len, embed_dim)
+
+        # 平均池化：忽略padding位置
+        mask = (x.sum(dim=2) != 0).float().unsqueeze(2)  # (batch, seq_len, 1)
+        x = (x * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1.0)  # (batch, embed_dim)
+
+        # MLP层
         x = self.fc1(x)
         x = self.relu1(x)
         x = self.dropout1(x)
@@ -121,12 +138,14 @@ class MLPClassifier(nn.Module):
 # 5. 初始化模型、损失、优化器
 # =========================
 device = torch.device(PARAMS["device"])
-model = MLPClassifier(input_dim=input_dim,
+model = MLPClassifier(vocab_size=vocab_size,
+                     embed_dim=PARAMS["embed_dim"],
                      hidden1=PARAMS["hidden1"],
                      hidden2=PARAMS["hidden2"],
                      num_classes=num_classes,
                      dropout1=PARAMS["dropout1"],
-                     dropout2=PARAMS["dropout2"]).to(device)
+                     dropout2=PARAMS["dropout2"],
+                     pad_idx=0).to(device)
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=PARAMS["learning_rate"])
@@ -180,7 +199,7 @@ for epoch in range(1, PARAMS["num_epochs"] + 1):
         best_val_acc = val_acc
         torch.save({
             "model_state": model.state_dict(),
-            "vectorizer_vocabulary": vectorizer.vocabulary_,
+            "tokenizer_word_index": tokenizer.word_index,
             "params": PARAMS,
             "label_classes": le.classes_.tolist()
         }, PARAMS["model_save_path"])
