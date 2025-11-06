@@ -277,7 +277,7 @@ def load_and_evaluate_model(model_name):
 
     device = torch.device(PARAMS["device"])
 
-    # 所有模型（包括MLP）都使用Tokenizer + Embedding
+    # 所有模型都使用Tokenizer + Embedding
     tokenizer = Tokenizer(num_words=params["max_vocab_size"], oov_token="<OOV>")
     tokenizer.word_index = ckpt["tokenizer_word_index"]
 
