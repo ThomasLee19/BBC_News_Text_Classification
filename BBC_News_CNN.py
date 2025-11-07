@@ -1,4 +1,4 @@
-# cnn_text_classification.py
+# BBC_News_CNN.py
 import os
 import torch
 import torch.nn as nn
@@ -12,32 +12,31 @@ import pandas as pd
 import numpy as np
 
 # =========================
-# 超参数配置
+# Hyperparameter Configuration
 # =========================
 PARAMS = {
-    "max_vocab_size": 10000,   # 最大词汇表
-    "max_len": 400,            # 最大序列长度
-    "embed_dim": 100,          # 词向量维度
-    "kernel_sizes": [3, 4, 5], # CNN卷积核尺寸
-    "num_filters": 100,        # 每种卷积核数量
-    "dropout": 0.5,            # dropout概率
-    "batch_size": 32,          # 批次大小
-    "learning_rate": 1e-3,     # 学习率
-    "num_epochs": 100,         # 训练轮次
+    "max_vocab_size": 10000,
+    "max_len": 400,
+    "embed_dim": 100,
+    "kernel_sizes": [3, 4, 5],
+    "num_filters": 100,
+    "dropout": 0.5,
+    "batch_size": 32,
+    "learning_rate": 1e-3,
+    "num_epochs": 100,
     "device": "cuda" if torch.cuda.is_available() else "cpu",
     "model_save_path": "cnn_text_cls.pth"
 }
 
-print("使用设备:", PARAMS["device"])
+print("Device:", PARAMS["device"])
 
 # =========================
-# 1. 数据读取
+# 1. Data Loading
 # =========================
 train_df = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/train.csv')
 val_df   = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/val.csv')
 test_df  = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/test.csv')
 
-# 使用第五列为文本输入，第二列为标签
 X_train_text = train_df.iloc[:, 4].astype(str)
 y_train_text = train_df.iloc[:, 1].astype(str)
 X_val_text   = val_df.iloc[:, 4].astype(str)
@@ -47,17 +46,17 @@ y_test_text  = test_df.iloc[:, 1].astype(str)
 print(X_train_text.head())
 
 # =========================
-# 2. 标签编码
+# 2. Label Encoding
 # =========================
 le = LabelEncoder()
 y_train = le.fit_transform(y_train_text)
 y_val   = le.transform(y_val_text)
 y_test  = le.transform(y_test_text)
 num_classes = len(le.classes_)
-print("类别数:", num_classes, "Classes:", list(le.classes_))
+print("Number of classes:", num_classes, "Classes:", list(le.classes_))
 
 # =========================
-# 3. Tokenizer -> 序列化
+# 3. Text Tokenization and Sequencing
 # =========================
 tokenizer = Tokenizer(num_words=PARAMS["max_vocab_size"], oov_token="<OOV>")
 tokenizer.fit_on_texts(X_train_text.tolist())
@@ -67,9 +66,8 @@ X_val_seq   = pad_sequences(tokenizer.texts_to_sequences(X_val_text),   maxlen=P
 X_test_seq  = pad_sequences(tokenizer.texts_to_sequences(X_test_text),  maxlen=PARAMS["max_len"], padding='post', truncating='post')
 
 vocab_size = min(len(tokenizer.word_index) + 1, PARAMS["max_vocab_size"])
-print("词表大小:", vocab_size)
+print("Vocabulary size:", vocab_size)
 
-# 转为 tensor
 X_train_tensor = torch.tensor(X_train_seq, dtype=torch.long)
 y_train_tensor = torch.tensor(y_train, dtype=torch.long)
 X_val_tensor   = torch.tensor(X_val_seq, dtype=torch.long)
@@ -77,7 +75,6 @@ y_val_tensor   = torch.tensor(y_val, dtype=torch.long)
 X_test_tensor  = torch.tensor(X_test_seq, dtype=torch.long)
 y_test_tensor  = torch.tensor(y_test, dtype=torch.long)
 
-# Dataset & DataLoader
 class TextDataset(Dataset):
     def __init__(self, X, y):
         self.X = X
@@ -92,7 +89,7 @@ val_loader   = DataLoader(TextDataset(X_val_tensor, y_val_tensor), batch_size=PA
 test_loader  = DataLoader(TextDataset(X_test_tensor, y_test_tensor), batch_size=PARAMS["batch_size"], shuffle=False)
 
 # =========================
-# 4. CNN 分类模型
+# 4. CNN Classification Model
 # =========================
 class CNNClassifier(nn.Module):
     def __init__(self, vocab_size, embed_dim, num_classes,
@@ -107,24 +104,17 @@ class CNNClassifier(nn.Module):
         self.fc = nn.Linear(num_filters * len(kernel_sizes), num_classes)
 
     def forward(self, x):
-        # x: (batch, seq_len)
-        x = self.embedding(x)           # (batch, seq_len, embed_dim)
-        x = x.unsqueeze(1)              # (batch, 1, seq_len, embed_dim)
-        
-        # 多尺寸卷积
+        x = self.embedding(x)
+        x = x.unsqueeze(1)
         conv_outs = [torch.relu(conv(x)).squeeze(3) for conv in self.convs]
-        
-        # 最大池化
         pool_outs = [torch.max(out, dim=2)[0] for out in conv_outs]
-        
-        # 拼接
         out = torch.cat(pool_outs, dim=1)
         out = self.dropout(out)
         logits = self.fc(out)
         return logits
 
 # =========================
-# 5. 初始化模型、损失、优化器
+# 5. Model Initialization
 # =========================
 device = torch.device(PARAMS["device"])
 model = CNNClassifier(vocab_size=vocab_size,
@@ -137,12 +127,10 @@ model = CNNClassifier(vocab_size=vocab_size,
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=PARAMS["learning_rate"])
-
-# 学习率调度器
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=PARAMS['num_epochs'], eta_min=1e-6)
 
 # =========================
-# 6. 训练与验证函数
+# 6. Training and Evaluation Functions
 # =========================
 def train_one_epoch(model, loader, optimizer, criterion, device):
     model.train()
@@ -174,10 +162,10 @@ def evaluate(model, loader, device):
     return acc, report
 
 # =========================
-# 7. 训练主循环
+# 7. Training Loop
 # =========================
 best_val_acc = 0.0
-print("训练参数:", PARAMS)
+print("Training parameters:", PARAMS)
 for epoch in range(1, PARAMS["num_epochs"] + 1):
     train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device)
     scheduler.step()
@@ -194,7 +182,7 @@ for epoch in range(1, PARAMS["num_epochs"] + 1):
         print("Saved best model ->", PARAMS["model_save_path"])
 
 # =========================
-# 8. 测试评估（加载最优模型）
+# 8. Test Evaluation
 # =========================
 ckpt = torch.load(PARAMS["model_save_path"], map_location=device, weights_only=False)
 model.load_state_dict(ckpt["model_state"])

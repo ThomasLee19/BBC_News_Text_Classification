@@ -1,4 +1,4 @@
-# lstm_text_classification.py
+# BBC_News_LSTM.py
 import os
 import torch
 import torch.nn as nn
@@ -12,33 +12,32 @@ import pandas as pd
 import numpy as np
 
 # =========================
-# 超参数配置
+# Hyperparameter Configuration
 # =========================
 PARAMS = {
-    "max_vocab_size": 10000,   # 最大词汇表
-    "max_len": 400,            # 最大序列长度
-    "embed_dim": 100,          # 词向量维度
-    "hidden_dim": 256,         # LSTM隐藏层维度
-    "num_layers": 2,           # LSTM层数
-    "bidirectional": True,     # 是否使用双向LSTM
-    "dropout": 0.5,            # dropout概率
-    "batch_size": 32,          # 批次大小
-    "learning_rate": 1e-3,     # 学习率
-    "num_epochs": 100,         # 训练轮次
+    "max_vocab_size": 10000,
+    "max_len": 400,
+    "embed_dim": 100,
+    "hidden_dim": 256,
+    "num_layers": 2,
+    "bidirectional": True,
+    "dropout": 0.5,
+    "batch_size": 32,
+    "learning_rate": 1e-3,
+    "num_epochs": 100,
     "device": "cuda" if torch.cuda.is_available() else "cpu",
     "model_save_path": "lstm_text_cls.pth"
 }
 
-print("使用设备:", PARAMS["device"])
+print("Device:", PARAMS["device"])
 
 # =========================
-# 1. 数据读取
+# 1. Data Loading
 # =========================
 train_df = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/train.csv')
 val_df   = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/val.csv')
 test_df  = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/test.csv')
 
-# 使用第五列为文本输入，第二列为标签
 X_train_text = train_df.iloc[:, 4].astype(str)
 y_train_text = train_df.iloc[:, 1].astype(str)
 X_val_text   = val_df.iloc[:, 4].astype(str)
@@ -48,17 +47,17 @@ y_test_text  = test_df.iloc[:, 1].astype(str)
 print(X_train_text.head())
 
 # =========================
-# 2. 标签编码
+# 2. Label Encoding
 # =========================
 le = LabelEncoder()
 y_train = le.fit_transform(y_train_text)
 y_val   = le.transform(y_val_text)
 y_test  = le.transform(y_test_text)
 num_classes = len(le.classes_)
-print("类别数:", num_classes, "Classes:", list(le.classes_))
+print("Number of classes:", num_classes, "Classes:", list(le.classes_))
 
 # =========================
-# 3. Tokenizer -> 序列化
+# 3. Text Tokenization and Sequencing
 # =========================
 tokenizer = Tokenizer(num_words=PARAMS["max_vocab_size"], oov_token="<OOV>")
 tokenizer.fit_on_texts(X_train_text.tolist())
@@ -68,9 +67,7 @@ X_val_seq   = pad_sequences(tokenizer.texts_to_sequences(X_val_text),   maxlen=P
 X_test_seq  = pad_sequences(tokenizer.texts_to_sequences(X_test_text),  maxlen=PARAMS["max_len"], padding='post', truncating='post')
 
 vocab_size = min(len(tokenizer.word_index) + 1, PARAMS["max_vocab_size"])
-print("词表大小:", vocab_size)
-
-# 转为 tensor
+print("Vocabulary size:", vocab_size)
 X_train_tensor = torch.tensor(X_train_seq, dtype=torch.long)
 y_train_tensor = torch.tensor(y_train, dtype=torch.long)
 X_val_tensor   = torch.tensor(X_val_seq, dtype=torch.long)
@@ -78,7 +75,6 @@ y_val_tensor   = torch.tensor(y_val, dtype=torch.long)
 X_test_tensor  = torch.tensor(X_test_seq, dtype=torch.long)
 y_test_tensor  = torch.tensor(y_test, dtype=torch.long)
 
-# Dataset & DataLoader
 class TextDataset(Dataset):
     def __init__(self, X, y):
         self.X = X
@@ -93,7 +89,7 @@ val_loader   = DataLoader(TextDataset(X_val_tensor, y_val_tensor), batch_size=PA
 test_loader  = DataLoader(TextDataset(X_test_tensor, y_test_tensor), batch_size=PARAMS["batch_size"], shuffle=False)
 
 # =========================
-# 4. LSTM 分类模型
+# 4. LSTM Classification Model
 # =========================
 class LSTMClassifier(nn.Module):
     def __init__(self, vocab_size, embed_dim, hidden_dim, num_classes,
@@ -103,69 +99,45 @@ class LSTMClassifier(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.bidirectional = bidirectional
-        
-        # Embedding层：将词索引映射为稠密向量
+
         self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_idx)
-        
-        # LSTM层：相比RNN增加了cell state，能够记忆长期信息
+
         self.lstm = nn.LSTM(
             embed_dim,
             hidden_dim,
             num_layers=num_layers,
             bidirectional=bidirectional,
-            dropout=dropout if num_layers > 1 else 0,  # 多层LSTM才使用dropout
+            dropout=dropout if num_layers > 1 else 0,
             batch_first=True
         )
-        
-        # 全连接层：将LSTM输出映射到类别空间
-        # 如果是双向LSTM，输出维度要 *2
+
         lstm_output_dim = hidden_dim * 2 if bidirectional else hidden_dim
         self.fc = nn.Linear(lstm_output_dim, num_classes)
-        
-        # Dropout层：防止过拟合
+
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        """
-        前向传播
-        Args:
-            x: [batch_size, seq_len] - 输入文本的token索引
-        Returns:
-            logits: [batch_size, num_classes] - 分类logits
-        """
-        # x: (batch, seq_len)
-        # 计算每个样本的实际长度（非padding部分）
         lengths = (x != 0).sum(dim=1).cpu()
+        x = self.dropout(self.embedding(x))
 
-        # Embedding + Dropout
-        x = self.dropout(self.embedding(x))  # (batch, seq_len, embed_dim)
-
-        # Pack序列以忽略padding
         packed_x = nn.utils.rnn.pack_padded_sequence(
             x, lengths, batch_first=True, enforce_sorted=False
         )
 
-        # LSTM前向传播
         packed_output, (h_n, c_n) = self.lstm(packed_x)
-        # h_n: (num_layers * num_directions, batch, hidden_dim)
-        # c_n: (num_layers * num_directions, batch, hidden_dim)
 
-        # 使用最后一层的隐藏状态进行分类
         if self.bidirectional:
-            # 拼接双向LSTM的最后隐藏状态（forward和backward）
-            hidden = torch.cat([h_n[-2], h_n[-1]], dim=1)  # (batch, hidden_dim*2)
+            hidden = torch.cat([h_n[-2], h_n[-1]], dim=1)
         else:
-            # 单向LSTM，取最后一层的隐藏状态
-            hidden = h_n[-1]  # (batch, hidden_dim)
+            hidden = h_n[-1]
 
-        # 应用dropout和全连接层
         out = self.dropout(hidden)
         logits = self.fc(out)
 
         return logits
 
 # =========================
-# 5. 初始化模型、损失、优化器
+# 5. Model Initialization
 # =========================
 device = torch.device(PARAMS["device"])
 model = LSTMClassifier(vocab_size=vocab_size,
@@ -179,17 +151,12 @@ model = LSTMClassifier(vocab_size=vocab_size,
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=PARAMS["learning_rate"])
-
-# 学习率调度器
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=PARAMS['num_epochs'], eta_min=1e-6)
 
 # =========================
-# 6. 训练与验证函数
+# 6. Training and Evaluation Functions
 # =========================
 def train_one_epoch(model, loader, optimizer, criterion, device):
-    """
-    训练一个epoch
-    """
     model.train()
     total_loss = 0.0
     for X_batch, y_batch in loader:
@@ -199,7 +166,6 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
         logits = model(X_batch)
         loss = criterion(logits, y_batch)
         loss.backward()
-        # 梯度裁剪，防止梯度爆炸
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         total_loss += loss.item() * X_batch.size(0)
@@ -220,10 +186,10 @@ def evaluate(model, loader, device):
     return acc, report
 
 # =========================
-# 7. 训练主循环
+# 7. Training Loop
 # =========================
 best_val_acc = 0.0
-print("训练参数:", PARAMS)
+print("Training parameters:", PARAMS)
 for epoch in range(1, PARAMS["num_epochs"] + 1):
     train_loss = train_one_epoch(model, train_loader, optimizer, criterion, device)
     scheduler.step()
@@ -240,7 +206,7 @@ for epoch in range(1, PARAMS["num_epochs"] + 1):
         print("Saved best model ->", PARAMS["model_save_path"])
 
 # =========================
-# 8. 测试评估（加载最优模型）
+# 8. Test Evaluation
 # =========================
 ckpt = torch.load(PARAMS["model_save_path"], map_location=device, weights_only=False)
 model.load_state_dict(ckpt["model_state"])
