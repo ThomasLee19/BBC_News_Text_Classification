@@ -32,9 +32,6 @@ env/
 logs/
 checkpoints/
 
-# Figures
-figures/
-
 # Temporary files
 *.tmp
 *.bak
