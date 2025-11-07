@@ -17,6 +17,9 @@ env/
 *.swo
 *~
 
+# Figures
+figures\original
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
