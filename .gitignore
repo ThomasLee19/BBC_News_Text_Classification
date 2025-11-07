@@ -44,7 +44,7 @@ figures/
 .DS_Store
 Thumbs.db
 
-# 不需要版本控制的项目文件
+# Project files that do not require version control
 evaluate.py
 main.py
 models.py

@@ -18,7 +18,7 @@ import seaborn as sns
 import json
 
 # =========================
-# 配置
+# Configuration
 # =========================
 PARAMS = {
     "test_data_path": "D:/NTU/EE6405/Group Project/BBC_News/data/test.csv",
@@ -27,20 +27,20 @@ PARAMS = {
     "device": "cuda" if torch.cuda.is_available() else "cpu"
 }
 
-# 创建输出目录
+# Create output directory
 os.makedirs(PARAMS["figures_dir"], exist_ok=True)
 
-# 类别名称
+# Class names
 CLASS_NAMES = ['business', 'entertainment', 'politics', 'sport', 'tech']
 
-# 设置绘图风格
+# Set plotting style
 plt.style.use('seaborn-v0_8-darkgrid')
 sns.set_palette("husl")
 
-print("使用设备:", PARAMS["device"])
+print("Device in use:", PARAMS["device"])
 
 # =========================
-# 数据集类（通用）
+# Dataset Class
 # =========================
 class TextDataset(Dataset):
     def __init__(self, X, y):
@@ -52,15 +52,13 @@ class TextDataset(Dataset):
         return self.X[idx], self.y[idx]
 
 # =========================
-# 模型定义（需要与训练时一致）
+# Model Definitions
 # =========================
 class MLPClassifier(nn.Module):
     def __init__(self, vocab_size, embed_dim, hidden1, hidden2, num_classes, dropout1, dropout2, pad_idx=0):
         super().__init__()
-        # Embedding层：将词索引映射为稠密向量
         self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_idx)
 
-        # MLP层
         self.fc1 = nn.Linear(embed_dim, hidden1)
         self.relu1 = nn.ReLU()
         self.dropout1 = nn.Dropout(dropout1)
@@ -73,14 +71,12 @@ class MLPClassifier(nn.Module):
 
     def forward(self, x):
         # x: (batch, seq_len)
-        # Embedding
         x = self.embedding(x)  # (batch, seq_len, embed_dim)
 
-        # 平均池化：忽略padding位置
+        # Average pooling: ignore padding positions
         mask = (x.sum(dim=2) != 0).float().unsqueeze(2)  # (batch, seq_len, 1)
         x = (x * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1.0)  # (batch, embed_dim)
 
-        # MLP层
         x = self.fc1(x)
         x = self.relu1(x)
         x = self.dropout1(x)
@@ -252,32 +248,32 @@ class TransformerClassifier(nn.Module):
         return logits
 
 # =========================
-# 加载模型和评估
+# Model Loading and Evaluation
 # =========================
 def load_and_evaluate_model(model_name):
-    """加载模型并在测试集上评估"""
+    """Load model and evaluate on test set"""
     print(f"\n{'='*60}")
-    print(f"评估 {model_name} 模型")
+    print(f"Evaluating {model_name} model")
     print(f"{'='*60}")
 
-    # 加载checkpoint
+    # Load checkpoint
     ckpt_path = os.path.join(PARAMS["models_dir"], f"{model_name.lower()}_text_cls.pth")
     ckpt = torch.load(ckpt_path, map_location=PARAMS["device"], weights_only=False)
     params = ckpt["params"]
 
-    # 读取测试数据
+    # Load test data
     test_df = pd.read_csv(PARAMS["test_data_path"])
     X_test_text = test_df.iloc[:, 4].astype(str)
     y_test_text = test_df.iloc[:, 1].astype(str)
 
-    # 标签编码
+    # Label encoding
     le = LabelEncoder()
     le.classes_ = np.array(ckpt["label_classes"])
     y_test = le.transform(y_test_text)
 
     device = torch.device(PARAMS["device"])
 
-    # 所有模型都使用Tokenizer + Embedding
+    # Tokenization and sequence padding
     tokenizer = Tokenizer(num_words=params["max_vocab_size"], oov_token="<OOV>")
     tokenizer.word_index = ckpt["tokenizer_word_index"]
 
@@ -292,7 +288,7 @@ def load_and_evaluate_model(model_name):
 
     vocab_size = min(len(tokenizer.word_index) + 1, params["max_vocab_size"])
 
-    # 根据不同模型创建
+    # Initialize model based on model type
     if model_name == "mlp":
         model = MLPClassifier(
             vocab_size=vocab_size,
@@ -354,11 +350,11 @@ def load_and_evaluate_model(model_name):
             max_len=params["max_len"]
         ).to(device)
 
-    # 加载权重
+    # Load model weights
     model.load_state_dict(ckpt["model_state"])
     model.eval()
 
-    # 评估
+    # Evaluate
     all_preds = []
     all_labels = []
 
@@ -373,7 +369,7 @@ def load_and_evaluate_model(model_name):
     all_preds = np.array(all_preds)
     all_labels = np.array(all_labels)
 
-    # 计算指标
+    # Calculate metrics
     metrics = {
         'accuracy': accuracy_score(all_labels, all_preds),
         'precision': precision_score(all_labels, all_preds, average='weighted', zero_division=0),
@@ -394,10 +390,10 @@ def load_and_evaluate_model(model_name):
     return metrics
 
 # =========================
-# 可视化函数
+# Visualization Functions
 # =========================
 def plot_confusion_matrix(y_true, y_pred, model_name, class_names, save_path):
-    """绘制混淆矩阵"""
+    """Plot confusion matrix"""
     cm = confusion_matrix(y_true, y_pred)
 
     plt.figure(figsize=(10, 8))
@@ -413,20 +409,20 @@ def plot_confusion_matrix(y_true, y_pred, model_name, class_names, save_path):
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ {model_name.upper()} 混淆矩阵已保存: {save_path}")
+    print(f"✓ {model_name.upper()} confusion matrix saved: {save_path}")
     plt.close()
 
 def plot_model_comparison(results, save_path):
-    """绘制模型性能对比图 - 4个子图"""
+    """Plot model performance comparison with 4 subplots"""
     model_names = ['MLP', 'RNN', 'LSTM', 'GRU', 'CNN', 'Transformer']
     metrics = ['accuracy', 'precision', 'recall', 'f1']
     metric_labels = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
 
-    # 准备数据
+    # Prepare data
     data = {metric: [results[model.lower()][metric] * 100 for model in model_names]
             for metric in metrics}
 
-    # 创建子图
+    # Create subplots
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
     axes = axes.flatten()
 
@@ -435,12 +431,12 @@ def plot_model_comparison(results, save_path):
     for idx, (metric, label) in enumerate(zip(metrics, metric_labels)):
         ax = axes[idx]
 
-        # 绘制柱状图 - 调整宽度以适应6个模型
+        # Plot bar chart
         x_pos = np.arange(len(model_names))
         bars = ax.bar(x_pos, data[metric], color=colors, alpha=0.85,
                      edgecolor='black', linewidth=1.2, width=0.7)
 
-        # 添加数值标签
+        # Add value labels
         for bar in bars:
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height,
@@ -454,7 +450,7 @@ def plot_model_comparison(results, save_path):
         ax.set_ylim([0, 105])
         ax.grid(True, alpha=0.3, axis='y')
 
-        # 添加平均线
+        # Add average line
         avg_value = np.mean(data[metric])
         ax.axhline(y=avg_value, color='red', linestyle='--', linewidth=2,
                   alpha=0.7, label=f'Average: {avg_value:.2f}%')
@@ -463,24 +459,24 @@ def plot_model_comparison(results, save_path):
     plt.suptitle('Model Performance Comparison', fontsize=18, fontweight='bold', y=0.995)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ 模型对比图已保存: {save_path}")
+    print(f"✓ Model comparison plot saved: {save_path}")
     plt.close()
 
 def plot_per_class_metric(results, class_names, metric, metric_label, save_path):
-    """绘制单个指标的各类别性能对比"""
+    """Plot per-class performance comparison for a specific metric"""
     model_names = ['MLP', 'RNN', 'LSTM', 'GRU', 'CNN', 'Transformer']
     n_classes = len(class_names)
 
     fig, ax = plt.subplots(figsize=(14, 7))
 
     x = np.arange(n_classes)
-    width = 0.13  # 6个模型，每个占0.13宽度
+    width = 0.13
 
     colors = ['#FF6B6B', '#FFA07A', '#4ECDC4', '#45B7D1', '#95E1D3', '#A8E6CF']
 
     for i, model_name in enumerate(model_names):
         values = [v * 100 for v in results[model_name.lower()][f'{metric}_per_class']]
-        offset = width * (i - 2.5)  # 居中对齐
+        offset = width * (i - 2.5)
         bars = ax.bar(x + offset, values, width, label=model_name,
                      color=colors[i], alpha=0.85, edgecolor='black', linewidth=0.8)
 
@@ -495,31 +491,31 @@ def plot_per_class_metric(results, class_names, metric, metric_label, save_path)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ {metric_label} per class 图已保存: {save_path}")
+    print(f"✓ {metric_label} per class plot saved: {save_path}")
     plt.close()
 
 # =========================
-# 主函数
+# Main Function
 # =========================
 def main():
     print("="*60)
-    print("BBC新闻文本分类 - 6模型统一评估")
+    print("BBC News Text Classification - Unified Evaluation of 6 Models")
     print("="*60)
 
-    # 评估所有模型
+    # Evaluate all models
     model_names = ['mlp', 'rnn', 'lstm', 'gru', 'cnn', 'transformer']
     results = {}
 
     for model_name in model_names:
         results[model_name] = load_and_evaluate_model(model_name)
 
-    # 生成可视化
+    # Generate visualizations
     print("\n" + "="*60)
-    print("生成可视化图表")
+    print("Generating Visualization Charts")
     print("="*60)
 
-    # 1. 混淆矩阵（6张）
-    print("\n[1/5] 生成混淆矩阵...")
+    # 1. Confusion matrices
+    print("\n[1/5] Generating confusion matrices...")
     for model_name in model_names:
         plot_confusion_matrix(
             results[model_name]['labels'],
@@ -529,35 +525,35 @@ def main():
             os.path.join(PARAMS["figures_dir"], f'confusion_matrix_{model_name}.png')
         )
 
-    # 2. 模型性能对比（1张，4子图）
-    print("\n[2/5] 生成模型性能对比图...")
+    # 2. Model performance comparison
+    print("\n[2/5] Generating model performance comparison plot...")
     plot_model_comparison(
         results,
         os.path.join(PARAMS["figures_dir"], 'model_performance_comparison.png')
     )
 
     # 3. Precision per class
-    print("\n[3/5] 生成Precision per class图...")
+    print("\n[3/5] Generating Precision per class plot...")
     plot_per_class_metric(
         results, CLASS_NAMES, 'precision', 'Precision',
         os.path.join(PARAMS["figures_dir"], 'precision_per_class.png')
     )
 
     # 4. Recall per class
-    print("\n[4/5] 生成Recall per class图...")
+    print("\n[4/5] Generating Recall per class plot...")
     plot_per_class_metric(
         results, CLASS_NAMES, 'recall', 'Recall',
         os.path.join(PARAMS["figures_dir"], 'recall_per_class.png')
     )
 
     # 5. F1-Score per class
-    print("\n[5/5] 生成F1-Score per class图...")
+    print("\n[5/5] Generating F1-Score per class plot...")
     plot_per_class_metric(
         results, CLASS_NAMES, 'f1', 'F1-Score',
         os.path.join(PARAMS["figures_dir"], 'f1_per_class.png')
     )
 
-    # 保存评估结果
+    # Save evaluation results
     eval_results = {}
     for model_name in model_names:
         eval_results[model_name] = {
@@ -573,11 +569,11 @@ def main():
     with open(os.path.join(PARAMS["figures_dir"], 'evaluation_results.json'), 'w') as f:
         json.dump(eval_results, f, indent=4)
 
-    # 结果汇总
+    # Results summary
     print("\n" + "="*80)
-    print("评估结果汇总")
+    print("Evaluation Results Summary")
     print("="*80)
-    print(f"{'模型':<15} {'Accuracy':<12} {'Precision':<12} {'Recall':<12} {'F1-Score':<12}")
+    print(f"{'Model':<15} {'Accuracy':<12} {'Precision':<12} {'Recall':<12} {'F1-Score':<12}")
     print("-"*80)
     for model_name in model_names:
         result = results[model_name]
@@ -587,15 +583,15 @@ def main():
               f"{result['f1']*100:>6.2f}%")
     print("="*80)
 
-    print("\n✓ 所有评估完成！")
-    print(f"✓ 图表保存路径: {PARAMS['figures_dir']}")
-    print("\n生成的图表文件:")
-    print("  1. confusion_matrix_[model].png - 混淆矩阵 (6张)")
-    print("  2. model_performance_comparison.png - 模型性能对比")
-    print("  3. precision_per_class.png - Precision各类别对比")
-    print("  4. recall_per_class.png - Recall各类别对比")
-    print("  5. f1_per_class.png - F1-Score各类别对比")
-    print("  6. evaluation_results.json - 评估结果JSON")
+    print("\n✓ All evaluations completed!")
+    print(f"✓ Charts saved to: {PARAMS['figures_dir']}")
+    print("\nGenerated chart files:")
+    print("  1. confusion_matrix_[model].png - Confusion matrices (6 files)")
+    print("  2. model_performance_comparison.png - Model performance comparison")
+    print("  3. precision_per_class.png - Precision per class comparison")
+    print("  4. recall_per_class.png - Recall per class comparison")
+    print("  5. f1_per_class.png - F1-Score per class comparison")
+    print("  6. evaluation_results.json - Evaluation results in JSON format")
 
 if __name__ == "__main__":
     main()
