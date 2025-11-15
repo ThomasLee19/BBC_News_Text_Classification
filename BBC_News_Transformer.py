@@ -1,6 +1,5 @@
 # BBC_News_Transformer.py
 # GAI Declaration: Portions of the syntax in this script were refined with the assistance of Generative AI tools.
-
 import os
 import math
 import torch
