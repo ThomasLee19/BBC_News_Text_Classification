@@ -1,4 +1,6 @@
 # BBC_News_Transformer.py
+# GAI Declaration: Portions of the syntax in this script were refined with the assistance of Generative AI tools.
+
 import os
 import math
 import torch
@@ -12,9 +14,7 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 import pandas as pd
 import numpy as np
 
-# =========================
 # Hyperparameter Configuration
-# =========================
 PARAMS = {
     "max_vocab_size": 15000,
     "max_len": 512,
@@ -32,9 +32,7 @@ PARAMS = {
 
 print("Device:", PARAMS["device"])
 
-# =========================
 # 1. Data Loading
-# =========================
 train_df = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/train.csv')
 val_df   = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/val.csv')
 test_df  = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/test.csv')
@@ -46,9 +44,7 @@ y_val_text   = val_df.iloc[:, 1].astype(str)
 X_test_text  = test_df.iloc[:, 4].astype(str)
 y_test_text  = test_df.iloc[:, 1].astype(str)
 print(X_train_text.head())
-# =========================
 # 2. Label Encoding
-# =========================
 le = LabelEncoder()
 y_train = le.fit_transform(y_train_text)
 y_val   = le.transform(y_val_text)
@@ -56,9 +52,7 @@ y_test  = le.transform(y_test_text)
 num_classes = len(le.classes_)
 print("Number of classes:", num_classes, "Classes:", list(le.classes_))
 
-# =========================
 # 3. Text Tokenization and Sequencing
-# =========================
 tokenizer = Tokenizer(num_words=PARAMS["max_vocab_size"], oov_token="<OOV>")
 tokenizer.fit_on_texts(X_train_text.tolist())
 
@@ -88,9 +82,7 @@ train_loader = DataLoader(TextDataset(X_train_tensor, y_train_tensor), batch_siz
 val_loader   = DataLoader(TextDataset(X_val_tensor, y_val_tensor), batch_size=PARAMS["batch_size"], shuffle=False)
 test_loader  = DataLoader(TextDataset(X_test_tensor, y_test_tensor), batch_size=PARAMS["batch_size"], shuffle=False)
 
-# =========================
 # 4. Positional Encoding Module
-# =========================
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=5000):
         super().__init__()
@@ -106,9 +98,7 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:, :x.size(1), :]
         return x
 
-# =========================
 # 5. Transformer Classification Model
-# =========================
 class TransformerClassifier(nn.Module):
     def __init__(self, vocab_size, embed_dim, num_classes,
                  nhead, num_layers, dim_feedforward, dropout, pad_idx=0):
@@ -137,9 +127,7 @@ class TransformerClassifier(nn.Module):
         logits = self.fc(pooled)
         return logits
 
-# =========================
 # 6. Model Initialization
-# =========================
 device = torch.device(PARAMS["device"])
 model = TransformerClassifier(vocab_size=vocab_size,
                               embed_dim=PARAMS["embed_dim"],
@@ -154,9 +142,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.AdamW(model.parameters(), lr=PARAMS["learning_rate"], weight_decay=1e-5)
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=PARAMS['num_epochs'], eta_min=1e-6)
 
-# =========================
 # 7. Training and Evaluation Functions
-# =========================
 def train_one_epoch(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0.0
@@ -186,9 +172,7 @@ def evaluate(model, loader, device):
     report = classification_report(ys, preds, target_names=le.classes_, zero_division=0)
     return acc, report
 
-# =========================
 # 8. Training Loop
-# =========================
 best_val_acc = 0.0
 print("Training parameters:", PARAMS)
 for epoch in range(1, PARAMS["num_epochs"] + 1):
@@ -206,9 +190,7 @@ for epoch in range(1, PARAMS["num_epochs"] + 1):
         }, PARAMS["model_save_path"])
         print("Saved best model ->", PARAMS["model_save_path"])
 
-# =========================
 # 9. Test Evaluation
-# =========================
 ckpt = torch.load(PARAMS["model_save_path"], map_location=device, weights_only=False)
 model.load_state_dict(ckpt["model_state"])
 test_acc, test_report = evaluate(model, test_loader, device)

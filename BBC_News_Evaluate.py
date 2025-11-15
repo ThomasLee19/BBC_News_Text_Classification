@@ -1,8 +1,6 @@
 # BBC_News_Evaluate.py
-"""
-BBC News Text Classification 
-Evaluate six models: MLP, RNN, LSTM, GRU, CNN, and Transformer, and generate comparison charts
-"""
+# GAI Declaration: Portions of the syntax in this script were refined with the assistance of Generative AI tools.
+
 import os
 import torch
 import torch.nn as nn
@@ -17,9 +15,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import json
 
-# =========================
 # Configuration
-# =========================
 PARAMS = {
     "test_data_path": "D:/NTU/EE6405/Group Project/BBC_News/data/test.csv",
     "models_dir": "D:/NTU/EE6405/Group Project/BBC_News/code/models",
@@ -39,9 +35,7 @@ sns.set_palette("husl")
 
 print("Device in use:", PARAMS["device"])
 
-# =========================
 # Dataset Class
-# =========================
 class TextDataset(Dataset):
     def __init__(self, X, y):
         self.X = X
@@ -51,9 +45,7 @@ class TextDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
-# =========================
 # Model Definitions
-# =========================
 class MLPClassifier(nn.Module):
     def __init__(self, vocab_size, embed_dim, hidden1, hidden2, num_classes, dropout1, dropout2, pad_idx=0):
         super().__init__()
@@ -247,9 +239,7 @@ class TransformerClassifier(nn.Module):
         logits = self.fc(pooled)
         return logits
 
-# =========================
 # Model Loading and Evaluation
-# =========================
 def load_and_evaluate_model(model_name):
     """Load model and evaluate on test set"""
     print(f"\n{'='*60}")
@@ -389,9 +379,7 @@ def load_and_evaluate_model(model_name):
 
     return metrics
 
-# =========================
 # Visualization Functions
-# =========================
 def plot_confusion_matrix(y_true, y_pred, model_name, class_names, save_path):
     """Plot confusion matrix"""
     cm = confusion_matrix(y_true, y_pred)
@@ -494,9 +482,7 @@ def plot_per_class_metric(results, class_names, metric, metric_label, save_path)
     print(f"✓ {metric_label} per class plot saved: {save_path}")
     plt.close()
 
-# =========================
 # Main Function
-# =========================
 def main():
     print("="*60)
     print("BBC News Text Classification - Unified Evaluation of 6 Models")

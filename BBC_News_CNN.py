@@ -11,9 +11,7 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 import pandas as pd
 import numpy as np
 
-# =========================
 # Hyperparameter Configuration
-# =========================
 PARAMS = {
     "max_vocab_size": 10000,
     "max_len": 400,
@@ -30,9 +28,7 @@ PARAMS = {
 
 print("Device:", PARAMS["device"])
 
-# =========================
 # 1. Data Loading
-# =========================
 train_df = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/train.csv')
 val_df   = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/val.csv')
 test_df  = pd.read_csv('D:/NTU/EE6405/Group Project/BBC_News/data/test.csv')
@@ -45,9 +41,7 @@ X_test_text  = test_df.iloc[:, 4].astype(str)
 y_test_text  = test_df.iloc[:, 1].astype(str)
 print(X_train_text.head())
 
-# =========================
 # 2. Label Encoding
-# =========================
 le = LabelEncoder()
 y_train = le.fit_transform(y_train_text)
 y_val   = le.transform(y_val_text)
@@ -55,9 +49,7 @@ y_test  = le.transform(y_test_text)
 num_classes = len(le.classes_)
 print("Number of classes:", num_classes, "Classes:", list(le.classes_))
 
-# =========================
 # 3. Text Tokenization and Sequencing
-# =========================
 tokenizer = Tokenizer(num_words=PARAMS["max_vocab_size"], oov_token="<OOV>")
 tokenizer.fit_on_texts(X_train_text.tolist())
 
@@ -88,9 +80,7 @@ train_loader = DataLoader(TextDataset(X_train_tensor, y_train_tensor), batch_siz
 val_loader   = DataLoader(TextDataset(X_val_tensor, y_val_tensor), batch_size=PARAMS["batch_size"], shuffle=False)
 test_loader  = DataLoader(TextDataset(X_test_tensor, y_test_tensor), batch_size=PARAMS["batch_size"], shuffle=False)
 
-# =========================
 # 4. CNN Classification Model
-# =========================
 class CNNClassifier(nn.Module):
     def __init__(self, vocab_size, embed_dim, num_classes,
                  kernel_sizes, num_filters, dropout, pad_idx=0):
@@ -113,9 +103,7 @@ class CNNClassifier(nn.Module):
         logits = self.fc(out)
         return logits
 
-# =========================
 # 5. Model Initialization
-# =========================
 device = torch.device(PARAMS["device"])
 model = CNNClassifier(vocab_size=vocab_size,
                      embed_dim=PARAMS["embed_dim"],
@@ -129,9 +117,7 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=PARAMS["learning_rate"])
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=PARAMS['num_epochs'], eta_min=1e-6)
 
-# =========================
 # 6. Training and Evaluation Functions
-# =========================
 def train_one_epoch(model, loader, optimizer, criterion, device):
     model.train()
     total_loss = 0.0
@@ -161,9 +147,7 @@ def evaluate(model, loader, device):
     report = classification_report(ys, preds, target_names=le.classes_, zero_division=0)
     return acc, report
 
-# =========================
 # 7. Training Loop
-# =========================
 best_val_acc = 0.0
 print("Training parameters:", PARAMS)
 for epoch in range(1, PARAMS["num_epochs"] + 1):
@@ -181,9 +165,7 @@ for epoch in range(1, PARAMS["num_epochs"] + 1):
         }, PARAMS["model_save_path"])
         print("Saved best model ->", PARAMS["model_save_path"])
 
-# =========================
 # 8. Test Evaluation
-# =========================
 ckpt = torch.load(PARAMS["model_save_path"], map_location=device, weights_only=False)
 model.load_state_dict(ckpt["model_state"])
 test_acc, test_report = evaluate(model, test_loader, device)
